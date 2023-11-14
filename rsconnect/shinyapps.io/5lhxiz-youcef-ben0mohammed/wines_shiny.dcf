@@ -1,0 +1,12 @@
+name: wines_shiny
+title: wines_shiny
+username: 5lhxiz-youcef-ben0mohammed
+account: 5lhxiz-youcef-ben0mohammed
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10522140
+bundleId: 7926893
+url: https://5lhxiz-youcef-ben0mohammed.shinyapps.io/wines_shiny/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
