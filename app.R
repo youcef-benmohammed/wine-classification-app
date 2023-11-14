@@ -1,4 +1,5 @@
 # Import libraries
+library(tidyverse)
 library(shiny)
 library(shinythemes)
 library(data.table)
@@ -12,23 +13,30 @@ wine <- read.csv("wine.data.csv")%>%
 # Build model
 model <- randomForest(cultivar ~ ., data = wine, ntree = 500, mtry = 13, importance = TRUE)
 
-# Save model to RDS file
+# Save model RDS file
 saveRDS(model, "wine_model.rds")
-
-# Read in the RF model
 model <- readRDS("wine_model.rds")
 
 ####################################
 # User interface                   #
 ####################################
 
+
 ui <- fluidPage(theme = shinytheme("united"),
-  setBackgroundColor(
-    color = c("#F7FBFF", "#722F37"),
-    gradient = "linear",
-    direction = "bottom"
-  ),
-                
+                tags$head(
+                  tags$style(
+                    HTML(
+                      '
+                      body {
+                        background-image: url("https://us.images.westend61.com/0000732744pw/red-wine-splashing-in-glass-in-front-of-white-background-CPF000031.jpg");
+                        background-size: cover;
+                        background-repeat: no-repeat;
+                        ground-attachment: fixed;
+                      }
+                      '
+                    )
+                  )
+                ),                
   # Page header
   headerPanel('Wine Cultivar'),
   
@@ -84,8 +92,14 @@ ui <- fluidPage(theme = shinytheme("united"),
     verbatimTextOutput('contents'),
     tableOutput('tabledata') # Prediction results table
     
-  )
+  ),
+  fileInput("uploadFile", "Upload data",
+            accept = c('text/csv', 'text/comma-separated-values',
+                       'text/plain', '.csv')
+  ),
+  actionButton("predictButton", "Get predictions")
 )
+
 
 ####################################
 # Server                           #
@@ -93,10 +107,17 @@ ui <- fluidPage(theme = shinytheme("united"),
 
 server <- function(input, output, session) {
 
-  # Input Data
-  datasetInput <- reactive({  
-    
-  # outlook,temperature,humidity,windy,play
+  observeEvent(input$predictButton, {
+    req(input$uploadFile)  # Vérifie si un fichier a été téléversé
+  
+    inFile <- input$uploadFile
+    df_ <- read.csv(inFile$datapath)
+    predictions <- predict(model, df_)
+    output_df <- data.frame(Data = df_, Prediction = predictions)
+    write.csv(output_df, "predictions.csv", row.names = FALSE)
+  })
+    # Input Data
+  datasetInput <- reactive({
   df <- data.frame(
     Name = c("alcohol", "malic.acid",  "ash", "alcalinity.of.ash",
              "magnesium", "total.phenols", "flavonoids", "nonflavonoid.phenols", 
@@ -125,7 +146,6 @@ server <- function(input, output, session) {
   test <- read.csv(paste("input", ".csv", sep=""), header = TRUE)
   
   Output <- data.frame(Prediction=predict(model,test), round(predict(model,test,type="prob"), 3))
-  print(Output)
   
   })
   
