@@ -91,13 +91,14 @@ ui <- fluidPage(theme = shinytheme("united"),
     tags$label(h3('Status/Output')), # Status/Output Text Box
     verbatimTextOutput('contents'),
     tableOutput('tabledata') # Prediction results table
-    
-  ),
+    ),
   fileInput("uploadFile", "Upload data",
             accept = c('text/csv', 'text/comma-separated-values',
                        'text/plain', '.csv')
-  ),
-  actionButton("predictButton", "Get predictions")
+            ),
+  actionButton("predictButton", "Get predictions", class="btn btn-primary"),
+    downloadButton("downloadPredictions", "Download Predictions")
+  
 )
 
 
@@ -106,16 +107,36 @@ ui <- fluidPage(theme = shinytheme("united"),
 ####################################
 
 server <- function(input, output, session) {
-
   observeEvent(input$predictButton, {
     req(input$uploadFile)  # Vérifie si un fichier a été téléversé
-  
+    
+    # Génère un nom de fichier unique pour les prédictions
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+    prediction_file <- paste0("predictions_", timestamp, ".csv")
+    
     inFile <- input$uploadFile
     df_ <- read.csv(inFile$datapath)
     predictions <- predict(model, df_)
     output_df <- data.frame(Data = df_, Prediction = predictions)
-    write.csv(output_df, "predictions.csv", row.names = FALSE)
+    
+    # Sauvegarde des prédictions dans un fichier avec un nom unique
+    write.csv(output_df, prediction_file, row.names = FALSE)
   })
+  
+  # Définition de downloadHandler en dehors de la réactivité
+  output$downloadPredictions <- downloadHandler(
+    filename = function() {
+      paste0("predictions_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+    },
+    content = function(file) {
+      inFile <- input$uploadFile
+      df_ <- read.csv(inFile$datapath)
+      predictions <- predict(model, df_)
+      output_df <- data.frame(Data = df_, Prediction = predictions)
+      write.csv(output_df, file, row.names = FALSE)
+    }
+  )
+  
     # Input Data
   datasetInput <- reactive({
   df <- data.frame(
@@ -137,6 +158,26 @@ server <- function(input, output, session) {
                            input$proline
                            )),
     stringsAsFactors = FALSE)
+  # Téléchargement du fichier sans écraser l'ancien
+  output$downloadPredictions <- downloadHandler(
+    filename = function() {
+      if (!is.null(input$uploadFile)) {
+        paste0("predictions_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+      } else {
+        "predictions.csv"
+      }
+    },
+    content = function(file) {
+      if (!is.null(input$uploadFile)) {
+        inFile <- input$uploadFile
+        df_ <- read.csv(inFile$datapath)
+        predictions <- predict(model, df_)
+        output_df <- data.frame(Data = df_, Prediction = predictions)
+        write.csv(output_df, file, row.names = FALSE)
+      }
+    }
+  )
+  
   
   cultivar <- "cultivar"
   df <- rbind(df, cultivar)
@@ -144,6 +185,8 @@ server <- function(input, output, session) {
   write.table(input,"input.csv", sep=",", quote = FALSE, row.names = FALSE, col.names = FALSE)
   
   test <- read.csv(paste("input", ".csv", sep=""), header = TRUE)
+  
+  
   
   Output <- data.frame(Prediction=predict(model,test), round(predict(model,test,type="prob"), 3))
   
