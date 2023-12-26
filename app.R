@@ -5,6 +5,7 @@ library(shinythemes)
 library(data.table)
 library(randomForest)
 library(shinyWidgets)
+library(treemapify)
 
 # Read data
 wine <- read.csv("wine.data.csv")%>%
@@ -22,95 +23,108 @@ model <- readRDS("wine_model.rds")
 ####################################
 
 
-ui <- fluidPage(theme = shinytheme("united"),
-                tags$head(
-                  tags$style(
-                    HTML(
-                      '
-                      body {
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Predictions",
+             theme = shinytheme("united"),
+             tags$head(
+               tags$style(
+                 HTML('
+      body {
                         background-image: url("https://us.images.westend61.com/0000732744pw/red-wine-splashing-in-glass-in-front-of-white-background-CPF000031.jpg");
                         background-size: cover;
                         background-repeat: no-repeat;
                         ground-attachment: fixed;
                       }
                       '
-                    )
-                  )
-                ),                
-  # Page header
-  headerPanel('Wine Cultivar'),
-  
-  # Input values
-  sidebarPanel(
-    HTML("<h3>Input parameters</h3>"),
-    
-    numericInput("alcohol", label = "Alcohol:", 
-                min = 10, max = 15,
-                value = 10, step= 0.01),
-    numericInput("malic.acid", "Malic acid:",
-                min = 0, max = 6,
-                value = 0, step= 0.001),
-    numericInput("ash", "Ash:",
-                min = 1, max = 4,
-                value = 1, step= 0.001),
-    numericInput("alcalinity.of.ash", "Alcalinity of Ash:",
-                min = 10, max = 30,
-                value = 10, step= 0.01),
-    numericInput("magnesium", "Magnesium:",
-                min = 70, max = 200,
-                value = 70, step= 0.01),
-    numericInput("total.phenols", "Total phenols:",
-                min = 0, max = 4,
-                value = 0, step= 0.001),
-    numericInput("flavnoids", "Flavnoids:",
-                min = 0, max = 6,
-                value = 0, step= 0.001),
-    numericInput("nonflavnoid.phenols", "Non-Flavnoid Phenols:",
-                min = 0, max = 1, 
-                value = 0, step= 0.0001
-                ),
-    numericInput("proanthocyanins", "Proanthocyanins:",
-                min = 0, max = 4,
-                value = 0, step= 0.001),
-    numericInput("color.intensity", "Color intensity:",
-                min = 1, max = 13,
-                value = 0, step= 0.001),
-    numericInput("hue", "Hue:",
-                min = 0, max = 2,
-                value = 0, step= 0.0001),
-    numericInput("od280.od315.of.diluted.wines", "od280 od315 of diluted wines:",
-                min = 1, max = 4,
-                value = 1, step= 0.001),
-    numericInput("proline", "Proline:",
-                min = 100, max = 2000,
-                value = 100, step= 0.1),
-    actionButton("submitbutton", "Submit", class = "btn btn-primary")
+                 )
+               )
+             ),                
+             # Page header
+             headerPanel('Wine Cultivar'),
+             
+             # Input values
+             sidebarPanel(
+               HTML("<h3>Input parameters</h3>"),
+               
+               numericInput("alcohol", label = "Alcohol:", 
+                            min = 10, max = 15,
+                            value = 10, step= 0.01),
+               numericInput("malic.acid", "Malic acid:",
+                            min = 0, max = 6,
+                            value = 0, step= 0.001),
+               numericInput("ash", "Ash:",
+                            min = 1, max = 4,
+                            value = 1, step= 0.001),
+               numericInput("alcalinity.of.ash", "Alcalinity of Ash:",
+                            min = 10, max = 30,
+                            value = 10, step= 0.01),
+               numericInput("magnesium", "Magnesium:",
+                            min = 70, max = 200,
+                            value = 70, step= 0.01),
+               numericInput("total.phenols", "Total phenols:",
+                            min = 0, max = 4,
+                            value = 0, step= 0.001),
+               numericInput("flavnoids", "Flavnoids:",
+                            min = 0, max = 6,
+                            value = 0, step= 0.001),
+               numericInput("nonflavnoid.phenols", "Non-Flavnoid Phenols:",
+                            min = 0, max = 1, 
+                            value = 0, step= 0.0001
+               ),
+               numericInput("proanthocyanins", "Proanthocyanins:",
+                            min = 0, max = 4,
+                            value = 0, step= 0.001),
+               numericInput("color.intensity", "Color intensity:",
+                            min = 1, max = 13,
+                            value = 0, step= 0.001),
+               numericInput("hue", "Hue:",
+                            min = 0, max = 2,
+                            value = 0, step= 0.0001),
+               numericInput("od280.od315.of.diluted.wines", "od280 od315 of diluted wines:",
+                            min = 1, max = 4,
+                            value = 1, step= 0.001),
+               numericInput("proline", "Proline:",
+                            min = 100, max = 2000,
+                            value = 100, step= 0.1),
+               actionButton("submitbutton", "Submit", class = "btn btn-primary")
+             ),
+             
+             mainPanel(
+               tags$label(h3('Status/Output')), # Status/Output Text Box
+               verbatimTextOutput('contents'),
+               tableOutput('tabledata') # Prediction results table
+             ),
+             fileInput("uploadFile", "Upload data",
+                       accept = c('text/csv', 'text/comma-separated-values',
+                                  'text/plain', '.csv')
+             ),
+             actionButton("predictButton", "Get predictions", class="btn btn-primary"),
+             downloadButton("downloadPredictions", "Download Predictions")
+             
+    )
   ),
-  
-  mainPanel(
-    tags$label(h3('Status/Output')), # Status/Output Text Box
-    verbatimTextOutput('contents'),
-    tableOutput('tabledata') # Prediction results table
-    ),
-  fileInput("uploadFile", "Upload data",
-            accept = c('text/csv', 'text/comma-separated-values',
-                       'text/plain', '.csv')
-            ),
-  actionButton("predictButton", "Get predictions", class="btn btn-primary"),
-    downloadButton("downloadPredictions", "Download Predictions")
-  
-)
+    tabPanel("Visualization"),
+             headerPanel('Wine Cultivar'),           
+             plotOutput('treeMap')       
+    
 
+)
 
 ####################################
 # Server                           #
 ####################################
 
 server <- function(input, output, session) {
+  performPredictions <- function(data) {
+    predictions <- predict(model, data)
+    output_df <- data.frame(Data = data, Prediction = predictions)
+    return(output_df)
+  }
   observeEvent(input$predictButton, {
-    req(input$uploadFile)  # Vérifie si un fichier a été téléversé
+    req(input$uploadFile)  # Check if a file has been uploaded
     
-    # Génère un nom de fichier unique pour les prédictions
+    # Generate a unique filename for predictions
     timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
     prediction_file <- paste0("predictions_", timestamp, ".csv")
     
@@ -119,52 +133,15 @@ server <- function(input, output, session) {
     predictions <- predict(model, df_)
     output_df <- data.frame(Data = df_, Prediction = predictions)
     
-    # Sauvegarde des prédictions dans un fichier avec un nom unique
+    # Save predictions to a file with a unique name
     write.csv(output_df, prediction_file, row.names = FALSE)
   })
   
-  # Définition de downloadHandler en dehors de la réactivité
-  output$downloadPredictions <- downloadHandler(
-    filename = function() {
-      paste0("predictions_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
-    },
-    content = function(file) {
-      inFile <- input$uploadFile
-      df_ <- read.csv(inFile$datapath)
-      predictions <- predict(model, df_)
-      output_df <- data.frame(Data = df_, Prediction = predictions)
-      write.csv(output_df, file, row.names = FALSE)
-    }
-  )
-  
-    # Input Data
-  datasetInput <- reactive({
-  df <- data.frame(
-    Name = c("alcohol", "malic.acid",  "ash", "alcalinity.of.ash",
-             "magnesium", "total.phenols", "flavonoids", "nonflavonoid.phenols", 
-             "proanthocyanins", "color.intensity",  "hue",    "od280.od315.of.diluted.wines", "proline"),
-    Value = as.character(c(input$alcohol,
-                           input$malic.acid,
-                           input$ash,
-                           input$alcalinity.of.ash,
-                           input$magnesium,
-                           input$total.phenols,
-                           input$flavnoids,
-                           input$nonflavnoid.phenols,
-                           input$proanthocyanins,
-                           input$color.intensity,
-                           input$hue,
-                           input$od280.od315.of.diluted.wines,
-                           input$proline
-                           )),
-    stringsAsFactors = FALSE)
-  # Téléchargement du fichier sans écraser l'ancien
+  # Define downloadHandler outside the reactivity
   output$downloadPredictions <- downloadHandler(
     filename = function() {
       if (!is.null(input$uploadFile)) {
         paste0("predictions_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
-      } else {
-        "predictions.csv"
       }
     },
     content = function(file) {
@@ -178,23 +155,34 @@ server <- function(input, output, session) {
     }
   )
   
-  
-  cultivar <- "cultivar"
-  df <- rbind(df, cultivar)
-  input <- transpose(df)
-  write.table(input,"input.csv", sep=",", quote = FALSE, row.names = FALSE, col.names = FALSE)
-  
-  test <- read.csv(paste("input", ".csv", sep=""), header = TRUE)
-  
-  
-  
-  Output <- data.frame(Prediction=predict(model,test), round(predict(model,test,type="prob"), 3))
-  
+  # Function to process input data for prediction
+  datasetInput <- reactive({
+    df <- data.frame(
+      Name = c("alcohol", "malic.acid",  "ash", "alcalinity.of.ash",
+               "magnesium", "total.phenols", "flavonoids", "nonflavonoid.phenols", 
+               "proanthocyanins", "color.intensity",  "hue",    "od280.od315.of.diluted.wines", "proline"),
+      Value = as.character(c(input$alcohol,
+                             input$malic.acid,
+                             input$ash,
+                             input$alcalinity.of.ash,
+                             input$magnesium,
+                             input$total.phenols,
+                             input$flavnoids,
+                             input$nonflavnoid.phenols,
+                             input$proanthocyanins,
+                             input$color.intensity,
+                             input$hue,
+                             input$od280.od315.of.diluted.wines,
+                             input$proline
+      )),
+      stringsAsFactors = FALSE
+    )
+    return(df)
   })
   
   # Status/Output Text Box
   output$contents <- renderPrint({
-    if (input$submitbutton>0) { 
+    if (input$submitbutton > 0) { 
       isolate("Calculation complete.") 
     } else {
       return("Server is ready for calculation.")
@@ -203,11 +191,28 @@ server <- function(input, output, session) {
   
   # Prediction results table
   output$tabledata <- renderTable({
-    if (input$submitbutton>0) { 
-      isolate(datasetInput()) 
+    if (input$submitbutton > 0) { 
+      isolate(performPredictions(datasetInput()$Value)) 
     } 
   })
-  
+  # Generate and render the treemap plot
+  output$treeMap <- renderPlot({
+    req(input$predictButton, input$uploadFile)  # Ensure predictButton is clicked and file is uploaded
+    inFile <- input$uploadFile
+    df <- read.csv(inFile$datapath)
+    
+    predictions <- predict(model, df)
+    output_df <- data.frame(Data = df, Prediction = predictions)
+    
+    output_df_summary <- output_df %>%
+      group_by(Prediction) %>%
+      summarise(count = n())
+    
+    ggplot(output_df_summary, aes(area = count, fill = Prediction, label = paste0(round((count / sum(count) * 100), 2), "%"))) +
+      geom_treemap() +
+      labs(title = "Treemap based on Predictions", fill = "Prediction") +
+      geom_treemap_text()
+  })
 }
 
 ####################################
