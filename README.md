@@ -49,5 +49,4 @@ The predictive model used in this application is a Random Forest classifier trai
 ## Setup and Execution
 1. Install the required R libraries using `install.packages('library_name')`.
 2. Run the Shiny application using RStudio or execute the `app.R` script in your R environment.
-3. Access the application through the web browser at the provided address.
-
+3. Access the application through the web browser at the following address: [Wine Cultivar Prediction App](https://5lhxiz-youcef-ben0mohammed.shinyapps.io/wine_classification_shiny-main/).
