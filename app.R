@@ -1,209 +1,230 @@
-# Import libraries
-library(tidyverse)
+# Wine Cultivar Prediction – Shiny app
+# The model is trained offline by train_model.R; the app only loads it.
 library(shiny)
-library(shinythemes)
-library(data.table)
-library(randomForest)
-library(shinyWidgets)
+library(bslib)
 library(plotly)
+library(DT)
+library(randomForest)
 
-# Read data
-wine <- read.csv("data/wine.data.csv") %>%
-  mutate(cultivar = as.factor(c('Barolo', 'Grignolino', 'Barbera'))[cultivar])
+source("R/wine.R")
 
-# Build model
-model <- randomForest(cultivar ~ ., data = wine, ntree = 500, mtry = 13, importance = TRUE)
+model <- readRDS("model/wine_model.rds")
+metrics <- readRDS("model/metrics.rds")
+ranges <- metrics$ranges
 
-# Save model RDS file
-saveRDS(model, "wine_model.rds")
-model <- readRDS("wine_model.rds")
+CLASS_COLORS <- c(Barolo = "#7B1E3A", Grignolino = "#D98C5F", Barbera = "#3E5C76")
 
-min_values <- sapply(wine[, -1], min)
-max_values <- sapply(wine[, -1], max)
+feature_input <- function(f) {
+  r <- ranges[ranges$feature == f, ]
+  step <- signif((r$max - r$min) / 100, 1)
+  numericInput(f, r$label, value = signif(r$median, 4), min = r$min, max = r$max, step = step)
+}
 
-####################################
-# User interface                   #
-####################################
+ui <- page_navbar(
+  title = "Wine Cultivar Prediction",
+  bg = "#7B1E3A",
+  theme = bs_theme(version = 5, bootswatch = "flatly", primary = "#7B1E3A", success = "#3E5C76") |>
+    bs_add_rules(".navbar .nav-link.active { color: #fff !important; font-weight: 600;
+                   border-bottom: 2px solid #fff; }"),
 
-ui <- fluidPage(
-  theme = shinytheme("united"),
-  tags$head(
-    tags$style(
-      HTML(
-        '
-        body {
-          background-image: url("background_image.jpeg");
-          background-size: cover;
-          background-repeat: no-repeat;
-          background-attachment: fixed;
-          background-position: center;
-          height: 100%;
-          width: 100%;
-          margin: 0;
-          padding: 0;
-          overflow-x: hidden;
-        }'
+  nav_panel(
+    "Single wine",
+    layout_sidebar(
+      sidebar = sidebar(
+        width = 330,
+        helpText("Values default to the dataset medians; limits are the range observed in the 178 wines."),
+        lapply(names(FEATURES), feature_input),
+        actionButton("predict_one", "Predict", class = "btn-primary"),
+        actionButton("reset", "Reset to medians", class = "btn-outline-primary")
+      ),
+      card(
+        card_header("Prediction"),
+        uiOutput("single_status"),
+        tableOutput("single_table"),
+        plotlyOutput("single_plot", height = "260px")
       )
     )
   ),
-  
 
-  headerPanel(
-    tags$div(
-      style = "background-color: rgb(240, 239, 136); padding: 10px; border-radius: 5px;",
-      tags$h1("Wine Cultivar Prediction")
+  nav_panel(
+    "Batch (CSV)",
+    layout_sidebar(
+      sidebar = sidebar(
+        width = 330,
+        fileInput("upload", "Upload a CSV file", accept = c(".csv", "text/csv")),
+        helpText("Same columns as data/test_data.csv. An optional 'cultivar' column with the true class is used to compute accuracy."),
+        downloadButton("download_example", "Example file (held-out wines)", class = "btn-outline-primary"),
+        hr(),
+        downloadButton("download_pred", "Download predictions", class = "btn-primary")
+      ),
+      uiOutput("batch_status"),
+      layout_columns(
+        col_widths = c(5, 7),
+        card(card_header("Predicted cultivars"), plotlyOutput("batch_plot", height = "300px")),
+        card(card_header("Accuracy (if true labels are provided)"), uiOutput("batch_accuracy"),
+             tableOutput("batch_confusion"))
+      ),
+      card(card_header("Predictions"), DTOutput("batch_table"))
     )
   ),
-  
- 
-  tabsetPanel(
-    tabPanel("Predict a Single Wine",
-             sidebarPanel(
-               HTML("<h3>Input parameters</h3>"),
-               
-               numericInput("alcohol", label = "Alcohol:", min = 10, max = 15, value = 10, step = 0.01),
-               numericInput("malic.acid", "Malic acid:", min = 0, max = 6, value = 0, step = 0.001),
-               numericInput("ash", "Ash:", min = 1, max = 4, value = 1, step = 0.001),
-               numericInput("alcalinity.of.ash", "Alcalinity of Ash:", min = 10, max = 30, value = 10, step = 0.01),
-               numericInput("magnesium", "Magnesium:", min = 70, max = 200, value = 70, step = 0.01),
-               numericInput("total.phenols", "Total phenols:", min = 0, max = 4, value = 0, step = 0.001),
-               numericInput("flavnoids", "Flavnoids:", min = 0, max = 6, value = 0, step = 0.001),
-               numericInput("nonflavnoid.phenols", "Non-Flavnoid Phenols:", min = 0, max = 1, value = 0, step = 0.0001),
-               numericInput("proanthocyanins", "Proanthocyanins:", min = 0, max = 4, value = 0, step = 0.001),
-               numericInput("color.intensity", "Color intensity:", min = 1, max = 13, value = 0, step = 0.001),
-               numericInput("hue", "Hue:", min = 0, max = 2, value = 0, step = 0.0001),
-               numericInput("od280.od315.of.diluted.wines", "od280 od315 of diluted wines:", min = 1, max = 4, value = 1, step = 0.001),
-               numericInput("proline", "Proline:", min = 100, max = 2000, value = 100, step = 0.1),
-               
-               actionButton("submitbutton", "Submit", class = "btn btn-primary")
-             ),
-             
-             mainPanel(
-               tags$label(h3('Status/Output')), # Status/Output Text Box
-               verbatimTextOutput('contents'),
-               tableOutput('tabledata') # Prediction results table
-             )
+
+  nav_panel(
+    "Model",
+    layout_columns(
+      col_widths = c(4, 4, 4),
+      value_box("Held-out accuracy", sprintf("%.1f %%", 100 * metrics$test_accuracy),
+                p(sprintf("%d wines never seen in training", metrics$n_test))),
+      value_box("Out-of-bag error", sprintf("%.1f %%", 100 * metrics$oob_error),
+                p(sprintf("%d training wines", metrics$n_train))),
+      value_box("Random forest", sprintf("%d trees", metrics$ntree),
+                p(sprintf("mtry = %d of %d variables", metrics$mtry, length(FEATURES))))
     ),
-    
-    tabPanel("Predict from CSV",
-             sidebarPanel(
-               fileInput("uploadFile", "Upload data", 
-                         accept = c('text/csv', 'text/comma-separated-values', 'text/plain', '.csv')),
-               actionButton("predictButton", "Get predictions", class = "btn btn-primary")
-             ),
-             
-             mainPanel(
-               tags$label(h3('Status/Output')), # Status/Output Text Box
-               verbatimTextOutput('csv_status'),  # Output for CSV prediction status
-               plotlyOutput("treemap")    # Output for treemap
-             )
+    layout_columns(
+      col_widths = c(5, 7),
+      card(card_header("Confusion matrix (held-out set)"), tableOutput("confusion")),
+      card(card_header("Variable importance (mean decrease in accuracy)"), plotlyOutput("importance", height = "380px"))
+    ),
+    card(
+      card_header("Data and method"),
+      markdown(paste0(
+        "**Data:** UCI Wine dataset – chemical analysis of 178 wines from three cultivars grown in the same region of Italy ",
+        "(Forina et al., PARVUS; [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/109/wine)).\n\n",
+        "**Method:** stratified split, 70 % training / 30 % held-out test (seed 42). Random forest (`randomForest`, ",
+        metrics$ntree, " trees, default mtry = √p) trained once by `train_model.R`; the app only loads the saved model, ",
+        "so predictions are reproducible.\n\n",
+        "**Caveat:** with 178 samples and well-separated classes this is a teaching dataset; ",
+        "inputs far outside the observed range are extrapolations."))
     )
-  )
+  ),
+  nav_spacer(),
+  nav_item(tags$a("Code", href = "https://github.com/youcef-benmohammed/wine-classification-app", target = "_blank"))
 )
 
-####################################
-# Server                           #
-####################################
-
-# server.R
-
 server <- function(input, output, session) {
-  
-  predictions_data <- reactiveValues(output = NULL) 
-  
-  observeEvent(input$predictButton, {
-    req(input$uploadFile)  
-    
-    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-    prediction_file <- paste0("predictions_", timestamp, ".csv")
-    
-    # Définir le chemin où le fichier sera sauvegardé
-    full_path  <- normalizePath(file.path(getwd(), prediction_file))
-    
-    inFile <- input$uploadFile
-    df_uploaded <- read.csv(inFile$datapath)
-    
-    if (!all(colnames(df_uploaded) %in% colnames(wine))) {
-      output$csv_status <- renderText("The uploaded file has an incorrect structure.")
-      return(NULL)
+  # ---- single wine --------------------------------------------------------
+  observeEvent(input$reset, {
+    for (f in names(FEATURES)) {
+      updateNumericInput(session, f, value = signif(ranges$median[ranges$feature == f], 4))
     }
-    
-    predictions <- predict(model, df_uploaded)
-    output_df <- data.frame(df_uploaded, Prediction = predictions)
-    
-    write.csv(output_df, full_path, row.names = FALSE)  
-    
-    predictions_data$output <- output_df  
-    
-    output$csv_status <- renderText(paste("Predictions have been made and saved at:", full_path))
   })
-  
-  datasetInput <- reactive({
-    req(input$submitbutton)  
-    
-    new_data <- data.frame(
-      alcohol = input$alcohol,
-      malic.acid = input$malic.acid,
-      ash = input$ash,
-      alcalinity.of.ash = input$alcalinity.of.ash,
-      magnesium = input$magnesium,
-      total.phenols = input$total.phenols,
-      flavonoids = input$flavnoids,
-      nonflavonoid.phenols = input$nonflavnoid.phenols,
-      proanthocyanins = input$proanthocyanins,
-      color.intensity = input$color.intensity,
-      hue = input$hue,
-      od280.od315.of.diluted.wines = input$od280.od315.of.diluted.wines,
-      proline = input$proline
+
+  single <- eventReactive(input$predict_one, {
+    values <- lapply(names(FEATURES), function(f) input[[f]])
+    names(values) <- names(FEATURES)
+    df <- as.data.frame(values)
+    check <- validate_upload(df, ranges)
+    if (!check$ok) return(list(error = "Please fill in every field with a number."))
+    list(pred = predict_wines(model, df), warnings = check$warnings)
+  })
+
+  output$single_status <- renderUI({
+    s <- single()
+    if (!is.null(s$error)) return(div(class = "alert alert-danger", s$error))
+    tagList(
+      h4(sprintf("Predicted cultivar: %s (%.0f %% of trees)", s$pred$Prediction,
+                 100 * s$pred$Confidence)),
+      if (length(s$warnings)) div(class = "alert alert-warning", s$warnings)
     )
-    
-    predictions <- predict(model, new_data)
-    prediction_prob <- round(predict(model, new_data, type = "prob"), 3)
-    
-    result <- data.frame(Prediction = predictions, prediction_prob)
-    return(result)
   })
-  
-  output$contents <- renderPrint({
-    if (input$submitbutton > 0) {
-      isolate("Calculation complete.")
-    } else {
-      return("Server is ready for calculation.")
-    }
+
+  output$single_table <- renderTable({
+    s <- single()
+    req(is.null(s$error))
+    s$pred[, CULTIVARS]
+  }, digits = 3)
+
+  output$single_plot <- renderPlotly({
+    s <- single()
+    req(is.null(s$error))
+    p <- unlist(s$pred[1, CULTIVARS])
+    plot_ly(x = factor(names(p), levels = CULTIVARS), y = p, type = "bar",
+            marker = list(color = CLASS_COLORS[names(p)])) |>
+      layout(yaxis = list(title = "Probability", range = c(0, 1)), xaxis = list(title = ""))
   })
-  
-  output$tabledata <- renderTable({
-    if (input$submitbutton > 0) {
-      isolate(datasetInput())
-    }
+
+  # ---- batch ----------------------------------------------------------------
+  batch <- reactive({
+    req(input$upload)
+    df <- tryCatch(utils::read.csv(input$upload$datapath),
+                   error = function(e) NULL)
+    if (is.null(df)) return(list(ok = FALSE, message = "Could not read the file as CSV."))
+    check <- validate_upload(df, ranges)
+    if (!check$ok) return(check)
+    pred <- predict_wines(model, check$data)
+    check$result <- cbind(check$data, pred)
+    check
   })
-  
-  output$treemap <- renderPlotly({
-    req(predictions_data$output)  
-    
-    df <- predictions_data$output
-    
-    treemap_data <- df %>%
-      group_by(Prediction) %>%
-      summarise(count = n(), .groups = 'drop')
-    
-    if (nrow(treemap_data) == 0) {
-      return(NULL)  
+
+  output$batch_status <- renderUI({
+    if (is.null(input$upload)) {
+      return(div(class = "alert alert-info", "Upload a CSV file, or download the example file to try the app."))
     }
-    
-    treemap_plot = plot_ly(
-      labels = treemap_data$Prediction,
-      values = treemap_data$count,
-      parents = rep("", nrow(treemap_data)), 
-      type = 'treemap'
-    ) %>%
-      layout(title = "Treemap of Predictions")
-    
-    treemap_plot  
+    b <- batch()
+    if (!b$ok) return(div(class = "alert alert-danger", style = "white-space: pre-line;", b$message))
+    tagList(div(class = "alert alert-success", b$message),
+            if (length(b$warnings)) div(class = "alert alert-warning", b$warnings))
+  })
+
+  output$batch_table <- renderDT({
+    b <- batch()
+    req(b$ok)
+    datatable(b$result, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE) |>
+      formatRound(c(CULTIVARS, "Confidence"), 3)
+  })
+
+  output$batch_plot <- renderPlotly({
+    b <- batch()
+    req(b$ok)
+    counts <- table(factor(b$result$Prediction, levels = CULTIVARS))
+    plot_ly(x = factor(names(counts), levels = CULTIVARS), y = as.integer(counts), type = "bar",
+            marker = list(color = CLASS_COLORS[names(counts)])) |>
+      layout(yaxis = list(title = "Number of wines"), xaxis = list(title = ""))
+  })
+
+  output$batch_accuracy <- renderUI({
+    b <- batch()
+    req(b$ok)
+    if (!"cultivar" %in% names(b$data) || all(is.na(b$data$cultivar))) {
+      return(p("No 'cultivar' column in the file: accuracy cannot be computed."))
+    }
+    known <- !is.na(b$data$cultivar)
+    acc <- mean(b$result$Prediction[known] == b$data$cultivar[known])
+    h4(sprintf("Accuracy: %.1f %% (%d labelled wines)", 100 * acc, sum(known)))
+  })
+
+  output$batch_confusion <- renderTable({
+    b <- batch()
+    req(b$ok, "cultivar" %in% names(b$data))
+    known <- !is.na(b$data$cultivar)
+    req(any(known))
+    as.data.frame.matrix(table(Observed = b$data$cultivar[known],
+                               Predicted = b$result$Prediction[known]))
+  }, rownames = TRUE)
+
+  output$download_pred <- downloadHandler(
+    filename = function() paste0("wine_predictions_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv"),
+    content = function(file) {
+      b <- batch()
+      validate(need(b$ok, "No valid predictions to download."))
+      utils::write.csv(b$result, file, row.names = FALSE)
+    }
+  )
+
+  output$download_example <- downloadHandler(
+    filename = function() "test_data.csv",
+    content = function(file) file.copy("data/test_data.csv", file)
+  )
+
+  # ---- model ----------------------------------------------------------------
+  output$confusion <- renderTable(as.data.frame.matrix(metrics$test_confusion), rownames = TRUE)
+
+  output$importance <- renderPlotly({
+    imp <- sort(metrics$importance[, 1])
+    plot_ly(x = imp, y = factor(FEATURES[names(imp)], levels = FEATURES[names(imp)]),
+            type = "bar", orientation = "h", marker = list(color = "#7B1E3A")) |>
+      layout(xaxis = list(title = "Mean decrease in accuracy"), yaxis = list(title = ""),
+             margin = list(l = 200))
   })
 }
 
-####################################
-# Create the shiny app             #
-####################################
-shinyApp(ui = ui, server = server)
+shinyApp(ui, server)

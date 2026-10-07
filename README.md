@@ -1,56 +1,88 @@
-# Wine Cultivar Prediction Shiny App
+# Wine Cultivar Prediction – R Shiny app
 
-## Overview
-This Shiny application enables to predict wine cultivars based on input parameters using a pre-trained Random Forest model. The model has been trained on a dataset containing various chemical properties of wines.
+[![tests](https://github.com/youcef-benmohammed/wine-classification-app/actions/workflows/tests.yml/badge.svg)](https://github.com/youcef-benmohammed/wine-classification-app/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Application Structure
-The application comprises two main panels:
-- **Sidebar Panel**: Allows users to input wine parameters for prediction.
-- **Main Panel**:
-  - Displays status/output messages.
-  - Shows prediction results in a tabular format or a treemap visualization.
+A Shiny app that predicts the cultivar of an Italian wine (Barolo, Grignolino or Barbera) from 13
+chemical measurements with a random forest. You can enter one wine by hand or upload a CSV file. The
+app also shows how the model was evaluated.
 
-## How to Use
-1. **Input Parameters**: On the sidebar, input the desired wine parameters:
-   - Alcohol
-   - Malic acid
-   - Ash
-   - Alcalinity of ash
-   - Magnesium
-   - Total phenols
-   - Flavnoids
-   - Non-Flavnoid phenols
-   - Proanthocyanins
-   - Color intensity
-   - Hue
-   - OD280/OD315 of diluted wines
-   - Proline
+**Live app:** https://5lhxiz-youcef-ben0mohammed.shinyapps.io/wine_classification_shiny-main/
+(free hosting: the first load can take 20–30 s)
 
-2. **Getting Predictions**:
-   - Click the "Submit" button to trigger the prediction based on the provided parameters.
-   - Alternatively, users can upload a dataset in CSV format using the "Upload Data" option and click the "Get Predictions" button to obtain predictions for the uploaded data.
+![Model tab](docs/model.png)
 
-3. **Output**:
-   - The output section will display the prediction status or inform you when the server is ready for calculations.
-   - Once the prediction is complete, the table will display the predicted wine cultivars based on the input parameters or the uploaded dataset. 
-   - A treemap visualization will be provided for the predictions made from the uploaded CSV file.
+## Features
 
-## Model Information
-The predictive model used in this application is a Random Forest classifier trained on a wine dataset. The model has been saved as `wine_model.rds`.
+| Tab | What it does |
+|---|---|
+| **Single wine** | 13 inputs, preset to the dataset medians and limited to the observed range. Returns the predicted cultivar and the class probabilities. |
+| **Batch (CSV)** | Validates the file: missing columns, non-numeric values, NAs, values far outside the observed range. Returns predictions, a downloadable CSV, and accuracy plus a confusion matrix when a `cultivar` column is present. |
+| **Model** | Held-out accuracy, out-of-bag error, confusion matrix, variable importance, data source and method. |
 
-## Files Included
-- `app.R`: Contains the code for the Shiny application.
-- `wine.data.csv`: The original dataset used to train the predictive model.
-- `test_data.csv`: A dataset containing test observations for prediction.
-- `wine_model.rds`: Saved Random Forest model used for predictions.
-- `background_image.jpeg`: Background image used for the application.
+## Data and method
 
-## Requirements
-- R libraries: `tidyverse`, `shiny`, `shinythemes`, `data.table`, `randomForest`, `shinyWidgets`, `plotly`.
+- **Data:** [UCI Wine dataset](https://archive.ics.uci.edu/dataset/109/wine). It contains 178 wines from three cultivars grown in the same region of Italy (Forina et al., PARVUS), with 13 chemical measurements each.
+- **Split:** stratified, 70 % training (125 wines) and 30 % held-out test (53 wines), seed 42.
+  `data/test_data.csv` contains only the held-out wines, with their true cultivar.
+- **Model:** `randomForest` with 500 trees and the default `mtry` (√13 ≈ 3), trained once by
+  [`train_model.R`](train_model.R). The app only loads `model/wine_model.rds`, so predictions are
+  reproducible.
 
-## Setup and Execution
-1. Install the required R libraries using:
-   - `install.packages('library_name')` for each library, or
-   - By installing the `environment.yml` file if you're using Conda.
-2. Run the Shiny application using RStudio or execute the `app.R` script in your R environment.
-3. Access the application through the web browser at the following address: [Wine Cultivar Prediction App](https://5lhxiz-youcef-ben0mohammed.shinyapps.io/wine_classification_shiny-main/).
+| Metric | Value |
+|---|---|
+| Out-of-bag error (training set) | 1.6 % |
+| Accuracy on the 53 held-out wines | 96.2 % (2 errors, both on Grignolino) |
+
+This is a small, well-separated teaching dataset. The project is meant to show a clean modelling
+workflow and a clean app, not a hard prediction problem.
+
+| Single wine | Batch prediction |
+|---|---|
+| ![](docs/single.png) | ![](docs/batch.png) |
+
+## Run locally
+
+```bash
+git clone https://github.com/youcef-benmohammed/wine-classification-app.git
+cd wine-classification-app
+conda env create -f environment.yml && conda activate wine-shiny   # or install the packages below
+Rscript -e 'shiny::runApp(".")'
+```
+
+R packages: `shiny`, `bslib`, `plotly`, `DT`, `randomForest` (plus `testthat` for the tests).
+
+Retrain the model, which regenerates `model/` and `data/test_data.csv`:
+
+```bash
+Rscript train_model.R
+```
+
+Run the tests:
+
+```bash
+Rscript tests/testthat.R
+```
+
+## Deploy (shinyapps.io)
+
+```r
+rsconnect::deployApp(appName = "wine_classification_shiny-main",
+                     appFiles = c("app.R", "R", "model", "data"))
+```
+
+## Project structure
+
+```
+├── app.R               # Shiny app (loads the saved model)
+├── train_model.R       # split, training, evaluation -> model/, data/test_data.csv
+├── R/wine.R            # shared functions (data, split, training, validation, prediction)
+├── model/              # wine_model.rds + metrics.rds
+├── data/               # wine.data.csv (UCI), test_data.csv (held-out wines)
+├── tests/              # testthat unit tests (run in GitHub Actions)
+└── CHANGELOG.md        # changes between versions (v0.1 -> v0.2)
+```
+
+## License
+
+MIT, see [LICENSE](LICENSE).

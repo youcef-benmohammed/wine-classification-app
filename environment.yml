@@ -1,0 +1,11 @@
+name: wine-shiny
+channels:
+  - conda-forge
+dependencies:
+  - r-base=4.4
+  - r-shiny>=1.8
+  - r-bslib>=0.6
+  - r-plotly
+  - r-dt
+  - r-randomforest=4.7
+  - r-testthat
